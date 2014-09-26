@@ -1,0 +1,63 @@
+
+<launch>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <node pkg="rosbag" type="play" name="play"
+  args="$(find laser_hover)/demo/mounted.bag --delay=5 --clock"/>
+
+
+  #### start scan_to_height
+
+  <node pkg="scan_to_height" type="scan_to_height.py" name="scan_to_height" />
+
+
+  #### filter the scan for points that are too close:
+  ####  - parts of the gimbal mount.
+  <node pkg="laser_filters" name="laser_filter_scan" type="scan_to_scan_filter_chain" output="screen">
+  	<rosparam command="load" file="$(find laser_hover)/demo/mounted_laser_filters.yaml" />
+	<param name="target_frame" value="base_link" />
+	<remap from="scan" to="clean_scan"/>
+  </node>
+
+  #### publish an example base_link -> laser transform ###########
+
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /base_footprint /laser 40" />
+  <node pkg="tf" type="static_transform_publisher" name="world_to_vodom" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /world /vo 40" />
+  <node pkg="tf" type="static_transform_publisher" name="world_to_odom" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /world /odom 40" />
+  <node pkg="tf" type="static_transform_publisher" name="world_to_odomc" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /world /odom_combined 40" />
+  <node pkg="tf" type="static_transform_publisher" name="base_to_trees"    args="0.0 0.0 0.0 0.0 0.0 0.0 /base_footprint /tree_base 40" />
+
+
+  #### start the laser scan_matcher ##############################
+
+  <node pkg="polar_scan_matcher" type="psm_node" 
+    name="psm_node"> # output="screen"> 
+
+    <param name="min_valid_points" value="10"/>
+    <param name="search_window" value="5"/>
+    <param name="scan_topic" value="scan_filtered" />
+    <param name="publish_tf" value="false" />
+    <param name="base_frame" value="base_footprint"/>
+  </node>
+
+  ## trees!
+  <node pkg="tree_detector" name="tree_detector" type="tree_detector.py" output="screen">
+      <remap from="scan" to="scan_filtered"/>
+  </node>
+  
+  <node pkg="tree_fix" name="tree_fix" type="tree_fix.py" output="screen">
+  </node>
+
+  <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf" output="screen">
+  	<param name="odom_used" value="true"/>
+  </node>
+
+  <node pkg="rosbag" type="record" name="record" args=" -O $(find tree_fix)/demo/processed /vo /trees /static_trees /corrected_trees /odom /tf" />
+
+
+</launch>

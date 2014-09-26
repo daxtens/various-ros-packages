@@ -25,10 +25,10 @@ PIXELS_PER_METER = 100 # pix per cm
 MAP_SIZE = 2 * 6 * PIXELS_PER_METER
 
 # how many points in an object before we assume it's a tree?
-MIN_PTS = 80
+MIN_PTS = 90
 
 # Process 1 out of every freqdivider frames 
-FREQ_DIVIDER = 5 
+FREQ_DIVIDER = 8
 
 pc_publisher = None
 
@@ -183,7 +183,7 @@ def callback(scan):
                    float(y-MAP_SIZE/2)/PIXELS_PER_METER,
                    0) for (y, x) in points]
     cloud = PointCloud2()
-    cloud.header.frame_id = "tree_base" 
+    cloud.header.frame_id = "laser" 
     cloud = pc2.create_cloud_xyz32(cloud.header, points_xyz)
     pc_publisher.publish(cloud)
 
