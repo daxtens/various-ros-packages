@@ -168,6 +168,19 @@ def callback(trees_scan):
                          for p in scan_points]
     
 
+    # preconvert the points with the last transform
+    # it was probably pretty close; we'll only have to find the 
+    # difference between it and the new correction, rather than
+    # having to find the complete new correction.
+    R = numpy.matrix([[math.cos(last_yaw), -math.sin(last_yaw)],
+                      [math.sin(last_yaw),  math.cos(last_yaw)]])
+    t = numpy.matrix([[last_pos[0]],[last_pos[1]]])
+    scan_pts_in_world_xy = numpy.matrix([[p.point.x, p.point.y] 
+                                         for p in scan_pts_in_world])
+    rotated = R*scan_pts_in_world_xy.T
+    translated = rotated + numpy.tile(t, (1, len(scan_pts_in_world)))
+    scan_pts_in_world_xy = numpy.array(translated.T)
+                                          
     # attempt to match the points to the static scan
     # what we're really trying to do is get a set of shared points
     # between the static scan and the new scan that we can use to
@@ -177,13 +190,12 @@ def callback(trees_scan):
     common_sp = []
     common_np = []
     used = [False] * len(static_pts)
-    for p in scan_pts_in_world:
+    for p in scan_pts_in_world_xy:
         found = False
         mindist = SAME_TREE_THRESH_MATCH
         for (i, sp) in enumerate(static_pts):
             #print(p,sp)
-            dist = distance((p.point.x, p.point.y),
-                            sp)
+            dist = distance(p, sp)
             if dist < mindist and used[i]:
                 print('already used sp', i)
             if dist < mindist and not used[i]:  
@@ -194,7 +206,7 @@ def callback(trees_scan):
         
         if found:
             common_sp += [bestpoint]
-            common_np += [numpy.array([p.point.x, p.point.y])]
+            common_np += [p]
             #print("coundn't find a match for a tree at ", p.point.x, p.point.y)
             #print("could be a new tree")
 
@@ -228,8 +240,7 @@ def callback(trees_scan):
         
                     
     # now we transform all the world points with R and t
-    scan_pts_in_world_xy = numpy.matrix([[p.point.x, p.point.y] 
-                                         for p in scan_pts_in_world])
+    scan_pts_in_world_xy = numpy.matrix(scan_pts_in_world_xy)
 
     rd = R*scan_pts_in_world_xy.T
     rtd = rd + numpy.tile(t, (1, len(scan_pts_in_world)))
@@ -356,8 +367,17 @@ def callback(trees_scan):
 
     # average the current and the last
     # reduce the effect of large slightly wrong jumps
-    last_pos = ((last_pos[0]*0.5 + t[0]*0.5), (last_pos[1]*0.5 + t[1]*0.5), 0)
-    last_yaw = (last_yaw+yaw)/2
+    new_R = (numpy.matrix([[math.cos(last_yaw), -math.sin(last_yaw)],
+                           [math.sin(last_yaw), math.cos(last_yaw)]]) *
+             numpy.matrix([[math.cos(yaw), -math.sin(yaw)],
+                           [math.sin(yaw), math.cos(yaw)]]))
+    new_yaw = math.atan2(new_R[1,0], new_R[0,0])
+    new_pos = (last_pos[0] + t[0,0], last_pos[1] + t[1,0],0)
+
+    last_pos = ((last_pos[0]+new_pos[0])/2,
+                (last_pos[1]+new_pos[1])/2,
+                0)
+    last_yaw = (new_yaw+last_yaw)/2
     tf_publisher.sendTransform(last_pos,
                                quaternion_from_euler(0,0,last_yaw),
                                rospy.Time.now(),
