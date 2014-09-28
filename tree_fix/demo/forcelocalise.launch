@@ -1,0 +1,59 @@
+
+<launch>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <node pkg="rosbag" type="play" name="play"
+  args="$(find laser_hover)/demo/mounted.bag --delay=5 --clock"/>
+
+
+  #### start scan_to_height
+
+  <node pkg="scan_to_height" type="scan_to_height.py" name="scan_to_height" />
+
+
+  #### filter the scan for points that are too close:
+  ####  - parts of the gimbal mount.
+  <node pkg="laser_filters" name="laser_filter_scan" type="scan_to_scan_filter_chain" output="screen">
+  	<rosparam command="load" file="$(find laser_hover)/demo/mounted_laser_filters.yaml" />
+	<remap from="scan" to="clean_scan"/>
+  </node>
+
+  #### publish an example base_link -> laser transform ###########
+
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /base_link /laser 40" />
+  <node pkg="tf" type="static_transform_publisher" name="odom_to_vodom" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /odom /vo 40" />
+  <!-- forcibly create a world frame... -->
+  <node pkg="tf" type="static_transform_publisher" name="dummy" 
+    args="0.0 0.0 0.0 0.0 0.0 0.0 /world /dummy 40" />
+  
+
+  #### start rviz ################################################
+
+  <node pkg="rviz" type="rviz" name="rviz" 
+    args="-d $(find laser_hover)/demo/ekf.rviz"/>
+
+  #### start the laser scan_matcher ##############################
+
+  <node pkg="polar_scan_matcher" type="psm_node" 
+    name="psm_node"> # output="screen"> 
+
+    <param name="min_valid_points" value="10"/>
+    <param name="search_window" value="5"/>
+    <param name="scan_topic" value="scan_filtered" />
+    <param name="publish_tf" value="true" />
+    <param name="world_frame" value="odom" />
+    <param name="base_frame" value="base_link"/>
+  </node>
+
+  ## trees!
+  <node pkg="tree_detector" name="tree_detector" type="tree_detector.py" output="screen">
+      <remap from="scan" to="scan_filtered"/>
+  </node>
+  
+  <node pkg="tree_fix" name="tree_fix" type="tree_fix.py" output="screen">
+  </node>
+
+</launch>
