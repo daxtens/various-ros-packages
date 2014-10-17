@@ -10,86 +10,32 @@ import numpy
 import cv2
 import math
 import tf
-import itertools
 from tf.transformations import quaternion_from_euler
 
 # how far away can two trees be before we decide they're actually
 # two trees and not one tree that's moved. Used in early section only.
-SAME_TREE_THRESH_MATCH = 3
+SAME_TREE_THRESH_MATCH = 2
 
 # how far can a tree be from existing trees after stabilisation
 # before we conclude it's a new tree
-SAME_TREE_THRESH_DETECT = 3
+SAME_TREE_THRESH_DETECT = 2
 
 # If tree trunks move by up to this much we update our static points
 # so that the next scan has a lower error.
 SAME_TREE_THRESH_UPDATE=0.3
 
-#
-SCAN_MATCH_WINDOW = 120 * 3.1415/180
+# the angular window either side of 0 to consider
+SCAN_MATCH_WINDOW = 30 * 3.1415/180
 SCAN_MATCH_PTS = 360
+
 
 def ptdistance(a, b):
     return distance((a.x,a.y),(b.x,b.y))
 
+
 def distance((x1,y1),(x2,y2)):
     return math.sqrt((x1-x2)**2+(y1-y2)**2)
 
-# Input: expects Nx3 matrix of points
-# Returns R,t
-# R = 3x3 rotation matrix
-# t = 3x1 column vector
-
-def rigid_transform_3D(A, B):
-    assert len(A) == len(B)
-
-    N = A.shape[0]; # total points
-
-    centroid_A = numpy.mean(A, axis=0)
-    centroid_B = numpy.mean(B, axis=0)
-    
-    # centre the points
-    AA = A - numpy.tile(centroid_A, (N, 1))
-    BB = B - numpy.tile(centroid_B, (N, 1))
-
-    # dot is matrix multiplication for array
-    H = numpy.transpose(AA) * BB
-
-    U, S, Vt = numpy.linalg.svd(H)
-
-    R = Vt.T * U.T
-
-    # special reflection case
-    if numpy.linalg.det(R) < 0:
-        #print("Reflection detected")
-        Rx = (numpy.matrix([[1,0],[0,-1]]))
-        Ry = (numpy.matrix([[-1,0],[0,1]]))
-        # Future self: this is where you're up to.
-        
-        #  you're getting an offset triangle
-        # you vaguely suspect you're seeing a double reflection, because you have close to an equilateral triangle. A double reflect would be indistinguisable - det() wise, from a non-reflected one.
-
-        # re detecting and correctin reflections:
-        # Both reflect x and reflect y are possible mathematically.
-        # You are probably going to be able to tell on the basis of
-        # R[0,0] - on either side of theta = 0, R[0,0]>0
-        # but - if new pts = oldpts * (reflection * rotation) + translation
-        # it's not the case that (true rotation) = (reflection * rotation) * (inverse reflection)
-        #if numpy.linalg.det(Rx) > 0:
-        #    R=Rx
-        #elif numpy.linalg.det(Ry) > 0:
-        #    R = Ry
-        #else:
-        #    print "unfixable reflection"
-        #    raise Exception
-        raise Exception
-    #   Vt[2,:] *= -1
-    #   R = Vt.T * U.T
-
-    t = -R*centroid_A.T + centroid_B.T
-
-    #print t
-    return R, t
 
 def error(A, B):
     err = A - B
@@ -119,11 +65,7 @@ def rototransform2D(A, B):
         R = numpy.matrix([[math.cos(yaw), -math.sin(yaw)],
                           [math.sin(yaw), math.cos(yaw)]])
         B2 = BB * R
-        #t = -R*centroid_A.T + centroid_B.T
-        #BC = ((R*B.T)+numpy.tile(t,(1, len(A)))).T
         err = error(B2, AA)
-        #normt = numpy.linalg.norm(t)
-        #print(err, normt)
         if err < minerr:
             minerr = err
             best_yaw = yaw
@@ -133,7 +75,6 @@ def rototransform2D(A, B):
                       [math.sin(yaw), math.cos(yaw)]])
     t = -R*centroid_A.T + centroid_B.T
 
-    #print(R,t)
     return R, t
     
 
@@ -150,13 +91,17 @@ world_frame = '/world'
 
 def callback(trees_scan):
     global static_pts, last_pos, last_yaw, tf_publisher
-    start = rospy.Time.now()
+
     # get the scan
     points_xyz = pc2.read_points(trees_scan)
     scan_points = [(x, y) for (x, y, z) in points_xyz]
 
     if len(scan_points) == 0:
-        print('0', rospy.Time.now()-start)
+        tf_publisher.sendTransform(last_pos,
+                                   quaternion_from_euler(0,0,last_yaw),
+                                   rospy.Time.now(),
+                                   '/odom',
+                                   world_frame)
         return
 
     # convert points to uncorrected world (odom) FoR
@@ -207,8 +152,6 @@ def callback(trees_scan):
         if found:
             common_sp += [bestpoint]
             common_np += [p]
-            #print("coundn't find a match for a tree at ", p.point.x, p.point.y)
-            #print("could be a new tree")
 
     ## Match our position and orientation based on common pts
     ## the idea is New = Static*R + t + N
@@ -227,16 +170,14 @@ def callback(trees_scan):
         publish_pose = False
         rmse = 0
     elif len(common_sp) >= 2:
-        # apply rigid transform
-        # http://nghiaho.com/?page_id=671
-        # it claims to be 3d but works for 2d too
+        # do a rotation + translation
+        # we initially did a rigid transform
+        # per http://nghiaho.com/?page_id=671
+        # but it has issue with reflections
+        # so now we just brute force a bunch of different translations
         staticp = numpy.matrix(common_sp)
         newp = numpy.matrix(common_np)
-        #try:
-        R, t = rototransform2D((newp),
-                                   (staticp))
-        #except:
-        #    return
+        R, t = rototransform2D(newp, staticp)
         
                     
     # now we transform all the world points with R and t
@@ -297,28 +238,25 @@ def callback(trees_scan):
                                    rospy.Time.now(),
                                    '/odom',
                                    world_frame)
-        print('d', rospy.Time.now()-start)
+        #print('d', rospy.Time.now()-start)
         return
 
     # detect new/moved trees
-    if rmse < 1:
-        for p in numpy.array(corrected_pts_xy):
-            for (i,sp) in enumerate(static_pts):
-                found = False
-                dist = distance(p, sp)
-                if dist < SAME_TREE_THRESH_UPDATE:
-                    static_pts[i] = p
-                    found = True
-                    break
-                if dist < SAME_TREE_THRESH_DETECT:
-                    found = True
-                    break
+    for p in numpy.array(corrected_pts_xy):
+        for (i,sp) in enumerate(static_pts):
+            found = False
+            dist = distance(p, sp)
+            if dist < SAME_TREE_THRESH_UPDATE:
+                static_pts[i] = p
+                found = True
+                break
+            if dist < SAME_TREE_THRESH_DETECT:
+                found = True
+                break
         
-            if not found:
-                print('new tree at: ', p)
-                static_pts += [p]
-    else:
-        print('td skipped', rmse)
+        if not found:
+            print('new tree at: ', p)
+            static_pts += [p]
 
     # publish the result as odometry & transform
     if not publish_pose:
@@ -327,7 +265,7 @@ def callback(trees_scan):
                                    rospy.Time.now(),
                                    "/odom",
                                    world_frame)
-        print('p', rospy.Time.now()-start)
+        #print('p', rospy.Time.now()-start)
         return
 
     msg = Odometry()
@@ -378,12 +316,14 @@ def callback(trees_scan):
                 (last_pos[1]+new_pos[1])/2,
                 0)
     last_yaw = (new_yaw+last_yaw)/2
+    #last_pos = new_pos
+    #last_yaw = new_yaw
     tf_publisher.sendTransform(last_pos,
                                quaternion_from_euler(0,0,last_yaw),
                                rospy.Time.now(),
                                "/odom",
                                world_frame)
-    print('e', rospy.Time.now()-start)
+    #print('e', rospy.Time.now()-start)
 
 
 def listener():
