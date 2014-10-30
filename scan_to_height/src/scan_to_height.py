@@ -20,10 +20,14 @@ ringbuf_sum = 0.0
 def callback(scan):
     global ringbuf, ringbuf_idx, ringbuf_sum
 
-    pts = 35
+    pts = 30
+    drop_pts = 20
+
     begin_idx = len(scan.ranges)-pts
     begin_angle = begin_idx * scan.angle_increment
 
+    end_idx = len(scan.ranges) - pts - drop_pts
+    end_angle = end_idx * scan.angle_increment
     # this process (creating an entire copy) is slow: consider ommitting it after tuning
     #height_scan = copy.deepcopy(scan)
     #height_scan.angle_min = height_scan.angle_min + begin_angle
@@ -47,8 +51,8 @@ def callback(scan):
 
     ## create height free scan
     clean_scan = scan
-    clean_scan.angle_max = scan.angle_max - pts*scan.angle_increment
-    clean_scan.ranges = scan.ranges[0:begin_idx]
+    clean_scan.angle_max = scan.angle_max - (pts+drop_pts)*scan.angle_increment
+    clean_scan.ranges = scan.ranges[0:end_idx]
     clean_scan.intensities = []
     #if clean_scan.intensities is not []:
     #    clean_scan.intensities = clean_scan.intensities[0:begin_idx]
