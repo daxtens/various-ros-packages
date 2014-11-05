@@ -13,6 +13,13 @@ import math
 import tf
 from tf.transformations import quaternion_from_euler
 
+# Dead reckoing decay
+# definitely fails at 0.9, seems to work at 0.75
+# but even then it can be seen to make random error into worse
+# systematic error. (which is why it's abandoned and this code is in
+# a separate branch for posterity!)
+DR_DECAY = 0.75
+
 # how far away can two trees be before we decide they're actually
 # two trees and not one tree that's moved. Used in early section only.
 SAME_TREE_THRESH_MATCH = 3
@@ -53,7 +60,7 @@ def rototransform2D(A, B):
 
     centroid_A = numpy.mean(A, axis=0)
     centroid_B = numpy.mean(B, axis=0)
-    
+
     # centre the points
     AA = A - numpy.tile(centroid_A, (N, 1))
     BB = B - numpy.tile(centroid_B, (N, 1))
@@ -77,7 +84,7 @@ def rototransform2D(A, B):
     t = -R*centroid_A.T + centroid_B.T
 
     return R, t
-    
+
 
 tf_listener = None
 tf_publisher = None
@@ -88,16 +95,28 @@ static_pts = []
 last_pos = None
 last_yaw = None
 last_height = 0
+vyaw = 0
+vpos = numpy.array([0,0,0])
 world_frame = '/world'
+last_time = None
 
 def callback(trees_scan):
-    global static_pts, last_pos, last_yaw, tf_publisher
+    global static_pts, last_pos, last_yaw, tf_publisher, vyaw, vpos, \
+           last_time
 
     # get the scan
     points_xyz = pc2.read_points(trees_scan)
     scan_points = [(x, y) for (x, y, z) in points_xyz]
 
     if len(scan_points) == 0 or last_height < 1:
+        # update with velocity
+        dtime = (rospy.Time.now() - last_time).to_sec()
+        last_time = rospy.Time.now()
+        last_yaw += vyaw * dtime
+        last_pos += vpos * dtime
+        # decay
+        vyaw = vyaw * DR_DECAY
+        vpos = vpos * DR_DECAY
         tf_publisher.sendTransform(last_pos,
                                    quaternion_from_euler(0,0,last_yaw),
                                    rospy.Time.now(),
@@ -215,12 +234,6 @@ def callback(trees_scan):
         rmse = error(corrected_common_new_pts,
                      numpy.matrix(common_sp))
 
-        # debug: check if uncorrected has lower error
-        #rmse_uncorr = error(numpy.matrix(common_np),
-        #                    numpy.matrix(common_sp))
-        #print(rmse, rmse_uncorr)
-        #if rmse > rmse_uncorr:
-        #    print(rmse,rmse_uncorr)
 
     yaw = math.atan2(R[1,0],R[0,0])
 
@@ -243,6 +256,14 @@ def callback(trees_scan):
 
     # publish the result as odometry & transform
     if not publish_pose:
+        # update with velocity
+        dtime = (rospy.Time.now() - last_time).to_sec()
+        last_time = rospy.Time.now()
+        last_yaw += vyaw * dtime
+        last_pos += vpos * dtime
+        # decay
+        vyaw = vyaw * DR_DECAY
+        vpos = vpos * DR_DECAY
         tf_publisher.sendTransform(last_pos,
                                    quaternion_from_euler(0,0,last_yaw),
                                    rospy.Time.now(),
@@ -299,7 +320,17 @@ def callback(trees_scan):
                             (last_pos[1]+new_pos[1])/2,
                             0])
     last_yaw = (new_yaw+last_yaw)/2
-
+    #last_pos = new_pos
+    #last_yaw = new_yaw
+    dtime = (rospy.Time.now() - last_time).to_sec()
+    if dtime == 0:
+        vyaw = 0
+        vpos = numpy.array([0,0,0])
+    else:
+        vyaw = (new_yaw - last_yaw)/dtime
+        vpos = (new_pos - last_pos)/dtime
+    #print(vyaw,vpos)
+    last_time = rospy.Time.now()
     tf_publisher.sendTransform(last_pos,
                                quaternion_from_euler(0,0,last_yaw),
                                rospy.Time.now(),
@@ -314,7 +345,7 @@ def height_cb(height):
 
 def listener():
     global pc_publisher,pc2_publisher, tf_listener, odom_publisher, \
-        tf_publisher, last_pos, last_yaw
+        tf_publisher, last_pos, last_yaw, last_time
     rospy.init_node('tree_fix', anonymous=False)
     rospy.Subscriber("trees", PointCloud2, callback)
     rospy.Subscriber("/height", Float32, height_cb)
@@ -325,6 +356,7 @@ def listener():
     tf_publisher = tf.TransformBroadcaster()
     last_pos = numpy.array([0,0,0])
     last_yaw = 0
+    last_time = rospy.Time.now()
     tf_publisher.sendTransform(last_pos,
                                quaternion_from_euler(0,0,last_yaw),
                                rospy.Time.now(),
