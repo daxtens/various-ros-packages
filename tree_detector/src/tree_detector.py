@@ -25,10 +25,10 @@ PIXELS_PER_METER = 100 # pix per cm
 MAP_SIZE = 2 * 6 * PIXELS_PER_METER
 
 # how many points in an object before we assume it's a tree?
-MIN_PTS = 90
+MIN_PTS = 80
 
 # Process 1 out of every freqdivider frames 
-FREQ_DIVIDER = 8
+FREQ_DIVIDER = 10
 
 pc_publisher = None
 
