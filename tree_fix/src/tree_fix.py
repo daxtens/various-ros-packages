@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
+from std_msgs.msg import Float32
 from sensor_msgs.msg import LaserScan, PointCloud2
 from geometry_msgs.msg import PointStamped, Point, \
                               QuaternionStamped, Quaternion
@@ -18,7 +19,7 @@ SAME_TREE_THRESH_MATCH = 3
 
 # how far can a tree be from existing trees after stabilisation
 # before we conclude it's a new tree
-SAME_TREE_THRESH_DETECT = 2
+SAME_TREE_THRESH_DETECT = 3
 
 # If tree trunks move by up to this much we update our static points
 # so that the next scan has a lower error.
@@ -86,6 +87,7 @@ odom_publisher = None
 static_pts = []
 last_pos = None
 last_yaw = None
+last_height = 0
 world_frame = '/world'
 
 def callback(trees_scan):
@@ -95,7 +97,7 @@ def callback(trees_scan):
     points_xyz = pc2.read_points(trees_scan)
     scan_points = [(x, y) for (x, y, z) in points_xyz]
 
-    if len(scan_points) == 0:
+    if len(scan_points) == 0 or last_height < 1:
         tf_publisher.sendTransform(last_pos,
                                    quaternion_from_euler(0,0,last_yaw),
                                    rospy.Time.now(),
@@ -305,12 +307,17 @@ def callback(trees_scan):
                                world_frame)
     #print('e', rospy.Time.now()-start)
 
+def height_cb(height):
+    global last_height
+    last_height = height.data
+
 
 def listener():
     global pc_publisher,pc2_publisher, tf_listener, odom_publisher, \
         tf_publisher, last_pos, last_yaw
     rospy.init_node('tree_fix', anonymous=False)
     rospy.Subscriber("trees", PointCloud2, callback)
+    rospy.Subscriber("/height", Float32, height_cb)
     pc_publisher = rospy.Publisher("static_trees", PointCloud2)
     pc2_publisher = rospy.Publisher("corrected_trees", PointCloud2)
     tf_listener = tf.TransformListener()
