@@ -51,8 +51,8 @@
   </node>
   
   <node pkg="laser_scan_matcher" type="laser_scan_matcher_node"
-        name="laser_scan_matcher_node" output="screen"
-        launch-prefix="xterm -e gdb - -args">
+        name="laser_scan_matcher_node" output="screen">
+#        launch-prefix="xterm -e gdb - -args">
       <remap from="cloud" to="trees"/>
       <param name="base_frame" value="tree_pos"/>
       <param name="use_cloud_input" value="true"/>
