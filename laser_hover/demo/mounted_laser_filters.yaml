@@ -1,0 +1,21 @@
+scan_filter_chain:
+- name: tooclose
+  type: LaserScanRangeFilter
+  params:
+    lower_threshold: 0.5
+    upper_threshold: .inf
+#- name: interp
+#  type: InterpolationFilter
+#- name: shadows
+#  type: ScanShadowsFilter
+#  params:
+#    min_angle: 10
+#    max_angle: 170
+#    neighbors: 2
+#    window: 1
+#- name: intensity
+#  type: LaserScanIntensityFilter
+#  params:
+#    lower_threshold: 10
+#    upper_threshold: 10000
+#    disp_histogram: 1
