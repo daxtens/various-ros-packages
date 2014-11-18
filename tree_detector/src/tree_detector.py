@@ -12,7 +12,7 @@ import math
 # for now we just publish min enclosing circle!
 
 # display the scan with the detected circles for debugging?
-DISPLAY_SCAN = True
+DISPLAY_SCAN = False
 
 # how many pixels per meter?
 PIXELS_PER_METER = 100 # pix per cm
