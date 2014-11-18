@@ -1,6 +1,6 @@
-These are the ROS packages to go with [https://github.com/daxtens/laser-scanner-forests-report](my report on Laser Scanners for Real-Time Odometry in Forests).
+These are the ROS packages to go with [my report on Laser Scanners for Real-Time Odometry in Forests](https://github.com/daxtens/laser-scanner-forests-report).
 
-You also need the polar scan matcher from [https://github.com/daxtens/scan_tools](my `scan_tools` fork).
+You also need the polar scan matcher from [my `scan_tools` fork](https://github.com/daxtens/scan_tools).
 
 There are readmes scattered throughout the repository which should help you navigate the individual packages. 
 
