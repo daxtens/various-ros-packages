@@ -4,7 +4,7 @@
   <param name="/use_sim_time" value="true"/>
 
   <node pkg="rosbag" type="play" name="play"
-  args="$(find laser_hover)/demo/mounted.bag --delay=5 --start=20 --clock"/>
+  args="$(find laser_hover)/demo/mounted.bag --delay=5 --start=45 --clock"/>
 
 
   #### start scan_to_height
