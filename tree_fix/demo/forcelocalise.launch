@@ -33,7 +33,7 @@
   #### start rviz ################################################
 
   <node pkg="rviz" type="rviz" name="rviz" 
-    args="-d $(find laser_hover)/demo/ekf.rviz"/>
+    args="-d $(find tree_fix)/demo/treefix.rviz"/>
 
   #### start the laser scan_matcher ##############################
 
